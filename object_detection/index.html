@@ -1,0 +1,63 @@
+<script src="https://unpkg.com/@tensorflow/tfjs-core/dist/tf-core.js"></script>
+<script src="https://unpkg.com/@tensorflow/tfjs-converter/dist/tf-converter.js"></script>
+<img id="img" width="500" src="test_image.jpg" /> 
+<script>
+'use strict';
+function centerCrop(image) {
+    image = image.expandDims().toFloat();
+    // Each entry is [y1, x1, y2, x2].
+    // y1 = 1 means the whole image height
+    // x1 = 1 means the whole image width
+    const boxes = [[0, 0, 1, 1]];
+    const method = 'bilinear';
+    const cropSize = [320, 320];
+    const boxInd = [0];
+    return tf.image.cropAndResize(image, boxes, boxInd, cropSize, method);
+}
+
+async function run() {
+    const MODEL_URL = 'model.json';
+    const model = await tf.loadGraphModel(MODEL_URL);
+    let img = tf.browser.fromPixels(document.getElementById('img'));
+    // console.log('Before we process', img.shape);
+    // img = tf.tidy(() => centerCrop(img));
+    img = img.expandDims().toFloat();
+    //let [scores, boxes] = await model.executeAsync({'Preprocessor/map/TensorArrayStack/TensorArrayGatherV3': img}, ['Postprocessor/BatchMultiClassNonMaxSuppression/map/while/MultiClassNonMaxSuppression/TopKV2_5', 'Postprocessor/Reshape_2']);
+    let [scores, boxes, classes] = await model.executeAsync({'ToFloat': img}, ['detection_scores', 'detection_boxes', 'detection_classes']);
+    console.log('scores min/max', scores.min().dataSync(), scores.max().dataSync(), scores.shape);
+    console.log('boxes min/max/shape', boxes.min().dataSync(), boxes.max().dataSync(), boxes.shape);
+    console.log('classes min/max/shape', classes.min().dataSync(), classes.max().dataSync(), classes.shape);
+    console.log('~~~~~~~~~~ SCORES ~~~~~~~~~~~~~~');
+    console.log(scores.dataSync());
+    console.log('~~~~~~~~~~ BOXES ~~~~~~~~~~~~~~');
+    boxes.print(true);
+    console.log('~~~~~~~~~~ CLASSES ~~~~~~~~~~~~~~');
+    console.log(classes.dataSync());
+    
+    const n = 30;
+    const start = performance.now();
+    for (let i = 0; i < n; i++) {
+        // let [scores, boxes, classes] = await model.executeAsync({'ToFloat': img}, ['detection_scores', 'detection_boxes', 'detection_classes']);
+        // tf.dispose([scores, boxes, classes]);
+        let [scores, boxes] = await model.executeAsync({'ToFloat': img}, ['Postprocessor/convert_scores' ,'Postprocessor/Decode/stack']);
+        tf.dispose([scores, boxes]);
+        // console.log(scores.shape, boxes.shape);
+    }
+    console.log('Took', (performance.now() - start) / n);
+
+    // boxes = boxes.squeeze(0);
+    // scores.print(true);
+    // boxes.print(true);
+    // const numClasses = scores.shape[1];
+    // const maxOutputSize = 10;
+    // for (let classId = 0; classId < numClasses; classId++) {
+    //     const classScores = scores.slice([0, classId], [-1, 1]).squeeze(1);
+    //     console.log(`class ${classId} shape`, classScores.shape);
+    //     const indices = tf.image.nonMaxSuppression(boxes, classScores, maxOutputSize);
+    //     const topBoxes = boxes.gather(indices);
+    //     topBoxes.print(true);
+    // }
+}
+tf.setBackend('webgl');
+run();
+</script>
