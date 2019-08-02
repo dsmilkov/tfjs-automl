@@ -1,33 +1,45 @@
-<script src="https://unpkg.com/@tensorflow/tfjs-core@1.2.3/dist/tf-core.js"></script>
-<script src="https://unpkg.com/@tensorflow/tfjs-converter@1.2.3/dist/tf-converter.js"></script>
+<script src="https://unpkg.com/@tensorflow/tfjs-core@1.2.6/dist/tf-core.js"></script>
+<script src="https://unpkg.com/@tensorflow/tfjs-converter@1.2.6/dist/tf-converter.js"></script>
 <img id="img" src="daisy1.jpg" />
 
 <script>
-async function run() {
+'use strict';
+
+let model;
+let img;
+let dict;
+
+async function load() {
   const MODEL_URL = 'model.json';
-  const model = await tf.loadGraphModel(MODEL_URL);
-  let img = tf.browser.fromPixels(document.getElementById('img'));
+  model = await tf.loadGraphModel(MODEL_URL);
+  img = tf.browser.fromPixels(document.getElementById('img'));
+  dict = model.execute({}, 'Const').dataSync();
+}
 
+async function predict(img) {
   // Preprocessing involves central crop and normalizing between [-1, 1].
-//   img = img.resizeBilinear([224, 224]);
-//   img = img.div(127.5).sub(1);
-//   img = img.expandDims();
-  console.log('Image is of shape', img.shape);
-
-  // Add your labels here.
-  const dict = model.execute({}, 'Const').dataSync();
-
-//   const inputName = 'map/TensorArrayStack/TensorArrayGatherV3';
+  //   img = img.resizeBilinear([224, 224]);
+  //   img = img.div(127.5).sub(1);
+  //   img = img.expandDims();
+  
+  //   const inputName = 'map/TensorArrayStack/TensorArrayGatherV3';
   const inputName = 'map/while/eval_image/convert_image/Cast';
   const feedDict = {};
-  feedDict[inputName] = img.toFloat();
+  const imgFloat = img.toFloat();
+  feedDict[inputName] = imgFloat;
   feedDict['map/TensorArrayUnstack/Shape'] = tf.tensor1d([1], 'int32');
-  let scores = await model.executeAsync(feedDict, 'scores');
-  scores.print(true);
-  console.log(dict);
-//   let data = await res.squeeze().argMax().array();
-//   console.log('Top score', dict[data])
-//   console.log('All scores', await res.data());
+  let scoresTensor = await model.executeAsync(feedDict, 'scores');
+  const scores = await scoresTensor.data();
+  tf.dispose([imgFloat, scoresTensor]);
+  const results = Array.from(scores).map((score, i) => ({score, label: dict[i]}));
+  results.sort((a, b) => b.score - a.score);
+  return results;
+}
+
+async function run() {
+  await load();
+  const scores = await predict(img);
+  console.log(scores);
 }
 run();
 </script>
