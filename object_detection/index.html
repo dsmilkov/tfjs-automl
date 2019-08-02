@@ -10,9 +10,9 @@
                 stroke: red;
             }
             .label {
-                dominant-baseline: hanging;
                 font-size: 12px;
                 fill: white;
+                text-anchor: middle;
             }
             .label-rect {
                 fill: black;
@@ -39,20 +39,19 @@ async function load() {
 
 async function predict(img) {
     const [height, width, __] = img.shape;
-    img = img.expandDims().toFloat();
+    img = tf.tidy(() => img.expandDims().toFloat());
     let [scoresTensor, boxesTensor] = await model.executeAsync({'ToFloat': img}, ['Postprocessor/convert_scores', 'Postprocessor/Decode/transpose_1']);
     const [_, numBoxes, numClasses] = scoresTensor.shape;
-    const scores = await scoresTensor.data();
-    const boxes = await boxesTensor.data();
+    const [scores, boxes] = await Promise.all([scoresTensor.data(), boxesTensor.data()]);
 
     const [maxScores, classes] = calculateMaxScores(scores, numBoxes, numClasses);
     const prevBackend = tf.getBackend();
     // Run post process in cpu.
     tf.setBackend('cpu');
     const topIndicesTensor = tf.image.nonMaxSuppression(boxesTensor, maxScores, TOPK_PREDICTIONS, IOU_THRESHOLD, SCORE_THRESHOLD);
-    const topIndices = await topIndicesTensor.data();
+    const topIndices = topIndicesTensor.dataSync();
     
-    tf.dispose([scoresTensor, boxesTensor, topIndicesTensor]);
+    tf.dispose([img, scoresTensor, boxesTensor, topIndicesTensor]);
 
     // Restore previous backend.
     tf.setBackend(prevBackend);
@@ -64,6 +63,15 @@ async function run() {
     await load();
     const predictions = await predict(img);
     drawBoxes(predictions);
+
+    console.log('Benchmarking...');
+    const N = 50;
+    const start = performance.now();
+    for (let i = 0; i < N; i++) {
+        await predict(img);
+    }
+    const elapsed = performance.now() - start;
+    console.log('Avg. inference time', elapsed / N);
 }
 tf.setBackend('webgl');
 run();
@@ -82,10 +90,9 @@ function drawBoxes(predictions) {
         rect.setAttribute('class', 'box');
 
         const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', x);
+        text.setAttribute('x', x + width / 2);
         text.setAttribute('y', y);
-        text.setAttribute('dx', 2);
-        text.setAttribute('dy', 3);
+        text.setAttribute('dy', 12);
         text.setAttribute('class', 'label'); 
         text.textContent = label;
         
