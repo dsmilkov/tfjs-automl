@@ -25,12 +25,11 @@ async function predict(img) {
   //   const inputName = 'map/TensorArrayStack/TensorArrayGatherV3';
   const inputName = 'map/while/eval_image/convert_image/Cast';
   const feedDict = {};
-  const imgFloat = img.toFloat();
-  feedDict[inputName] = imgFloat;
+  feedDict[inputName] = img.toFloat();
   feedDict['map/TensorArrayUnstack/Shape'] = tf.tensor1d([1], 'int32');
   let scoresTensor = await model.executeAsync(feedDict, 'scores');
   const scores = await scoresTensor.data();
-  tf.dispose([imgFloat, scoresTensor]);
+  tf.dispose([feedDict, scoresTensor]);
   const results = Array.from(scores).map((score, i) => ({score, label: dict[i]}));
   results.sort((a, b) => b.score - a.score);
   return results;
