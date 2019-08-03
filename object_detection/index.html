@@ -1,46 +1,48 @@
 <script src="https://unpkg.com/@tensorflow/tfjs-core/dist/tf-core.js"></script>
 <script src="https://unpkg.com/@tensorflow/tfjs-converter/dist/tf-converter.js"></script>
 <div id="imgDiv" style="position:relative;">
-    <img id="img" width="500" src="test_image.jpg" />
-    <svg width="500" height="375" style="position: absolute;top:0;left:0;">
-        <style>
-            .box {
-                stroke-width: 2;
-                fill: none;
-                stroke: red;
-            }
-            .label {
-                font-size: 12px;
-                fill: white;
-                text-anchor: middle;
-            }
-            .label-rect {
-                fill: black;
-            }
-        </style>
-    </svg>
+  <img id="img" width="500" src="test_image.jpg" />
+  <svg width="500" height="375" style="position: absolute;top:0;left:0;">
+    <style>
+      .box {
+        stroke-width: 2;
+        fill: none;
+        stroke: red;
+      }
+
+      .label {
+        font-size: 12px;
+        fill: white;
+        text-anchor: middle;
+      }
+
+      .label-rect {
+        fill: black;
+      }
+    </style>
+  </svg>
 </div>
 <script>
-'use strict';
-const TOPK_PREDICTIONS = 20;
-const IOU_THRESHOLD = 0.5;
-const SCORE_THRESHOLD = 0.5;
+  'use strict';
+  const TOPK_PREDICTIONS = 20;
+  const IOU_THRESHOLD = 0.5;
+  const SCORE_THRESHOLD = 0.5;
 
-const CLASSES = ['background','Tomato','Seafood', 'Salad', 'Baked Goods','Cheese'];
+  const CLASSES = ['background', 'Tomato', 'Seafood', 'Salad', 'Baked Goods', 'Cheese'];
 
-let model = null;
-let img = null;
+  let model = null;
+  let img = null;
 
-async function load() {
-  const MODEL_URL = 'model.json';
-  model = await tf.loadGraphModel(MODEL_URL);
-  img = tf.browser.fromPixels(document.getElementById('img'));
-}
+  async function load() {
+    const MODEL_URL = 'model.json';
+    model = await tf.loadGraphModel(MODEL_URL);
+    img = tf.browser.fromPixels(document.getElementById('img'));
+  }
 
-async function predict(img) {
+  async function predict(img) {
     const [height, width, __] = img.shape;
     img = tf.tidy(() => img.expandDims().toFloat());
-    let [scoresTensor, boxesTensor] = await model.executeAsync({'ToFloat': img}, ['Postprocessor/convert_scores', 'Postprocessor/Decode/transpose_1']);
+    let [scoresTensor, boxesTensor] = await model.executeAsync({ 'ToFloat': img }, ['Postprocessor/convert_scores', 'Postprocessor/Decode/transpose_1']);
     const [_, numBoxes, numClasses] = scoresTensor.shape;
     const [scores, boxes] = await Promise.all([scoresTensor.data(), boxesTensor.data()]);
 
@@ -50,16 +52,16 @@ async function predict(img) {
     tf.setBackend('cpu');
     const topIndicesTensor = tf.image.nonMaxSuppression(boxesTensor, maxScores, TOPK_PREDICTIONS, IOU_THRESHOLD, SCORE_THRESHOLD);
     const topIndices = topIndicesTensor.dataSync();
-    
+
     tf.dispose([img, scoresTensor, boxesTensor, topIndicesTensor]);
 
     // Restore previous backend.
     tf.setBackend(prevBackend);
 
     return buildDetectedObjects(width, height, boxes, maxScores, topIndices, classes);
-}
+  }
 
-async function run() {
+  async function run() {
     await load();
     const predictions = await predict(img);
     drawBoxes(predictions);
@@ -68,72 +70,72 @@ async function run() {
     const N = 50;
     const start = performance.now();
     for (let i = 0; i < N; i++) {
-        await predict(img);
+      await predict(img);
     }
     const elapsed = performance.now() - start;
     console.log('Avg. inference time', elapsed / N);
-}
-tf.setBackend('webgl');
-run();
+  }
+  tf.setBackend('webgl');
+  run();
 
-function drawBoxes(predictions) {
+  function drawBoxes(predictions) {
     const svg = document.querySelector('svg');
     predictions.forEach(prediction => {
-        const {bbox, label, score} = prediction;
-        console.log(label, score);
-        const [x, y, width, height] = bbox;
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('width', width);
-        rect.setAttribute('height', height);
-        rect.setAttribute('x', x);
-        rect.setAttribute('y', y);
-        rect.setAttribute('class', 'box');
+      const { bbox, label, score } = prediction;
+      console.log(label, score);
+      const [x, y, width, height] = bbox;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      rect.setAttribute('width', width);
+      rect.setAttribute('height', height);
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('class', 'box');
 
-        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-        text.setAttribute('x', x + width / 2);
-        text.setAttribute('y', y);
-        text.setAttribute('dy', 12);
-        text.setAttribute('class', 'label'); 
-        text.textContent = label;
-        
-        svg.appendChild(rect);
-        svg.appendChild(text);
+      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      text.setAttribute('x', x + width / 2);
+      text.setAttribute('y', y);
+      text.setAttribute('dy', 12);
+      text.setAttribute('class', 'label');
+      text.textContent = label;
 
-        const textBBox = text.getBBox();
-        const textRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        textRect.setAttribute('x', textBBox.x);
-        textRect.setAttribute('y', textBBox.y);
-        textRect.setAttribute('width', textBBox.width);
-        textRect.setAttribute('height', textBBox.height);
-        textRect.setAttribute('class', 'label-rect');
-        svg.insertBefore(textRect, text);
-        
+      svg.appendChild(rect);
+      svg.appendChild(text);
+
+      const textBBox = text.getBBox();
+      const textRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      textRect.setAttribute('x', textBBox.x);
+      textRect.setAttribute('y', textBBox.y);
+      textRect.setAttribute('width', textBBox.width);
+      textRect.setAttribute('height', textBBox.height);
+      textRect.setAttribute('class', 'label-rect');
+      svg.insertBefore(textRect, text);
+
 
 
 
     });
-}
+  }
 
-function calculateMaxScores(scores, numBoxes, numClasses) {
+  function calculateMaxScores(scores, numBoxes, numClasses) {
     const maxScores = [];
     const classes = [];
     for (let i = 0; i < numBoxes; i++) {
-        let max = Number.MIN_VALUE;
-        let classIndex = -1;
-        for (let j = 0; j < numClasses; j++) {
+      let max = Number.MIN_VALUE;
+      let classIndex = -1;
+      for (let j = 0; j < numClasses; j++) {
         const score = scores[i * numClasses + j];
         if (score > max) {
-            max = scores[i * numClasses + j];
-            classIndex = j;
+          max = scores[i * numClasses + j];
+          classIndex = j;
         }
-        }
-        maxScores[i] = max;
-        classes[i] = classIndex;
+      }
+      maxScores[i] = max;
+      classes[i] = classIndex;
     }
     return [maxScores, classes];
-}
+  }
 
-function buildDetectedObjects(width, height, boxes, scores, indexes, classes) {
+  function buildDetectedObjects(width, height, boxes, scores, indexes, classes) {
     const count = indexes.length;
     const objects = [];
     for (let i = 0; i < count; i++) {

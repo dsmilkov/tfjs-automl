@@ -3,42 +3,63 @@
 <img id="img" src="daisy1.jpg" />
 
 <script>
-'use strict';
+  'use strict';
 
-let model;
-let img;
-let dict;
+  let model;
+  let img;
+  let dict;
 
-async function load() {
-  const MODEL_URL = 'model.json';
-  model = await tf.loadGraphModel(MODEL_URL);
-  img = tf.browser.fromPixels(document.getElementById('img'));
-  dict = model.execute({}, 'Const').dataSync();
-}
+  async function load() {
+    const MODEL_URL = 'model.json';
+    model = await tf.loadGraphModel(MODEL_URL);
+    img = tf.browser.fromPixels(document.getElementById('img'));
+    dict = model.execute({}, 'Const').dataSync();
+  }
 
-async function predict(img) {
-  // Preprocessing involves central crop and normalizing between [-1, 1].
-  //   img = img.resizeBilinear([224, 224]);
-  //   img = img.div(127.5).sub(1);
-  //   img = img.expandDims();
+  function centerCrop(img) {
+    return tf.tidy(() => {
+      const [height, width, _] = img.shape;
+      let top = 0;
+      let left = 0;
+      if (height > width) {
+        top = (height - width) / 2;
+      } else {
+        left = (width - height) / 2;
+      }
+      const size = Math.min(width, height);
+      const boxes = [[top / height, left / width, (top + size) / height, (left + size) / width]];
+      const boxIndices = [0];
+      const cropSize = [224, 224];
+      return tf.image.cropAndResize(img.toFloat().expandDims(), boxes, boxIndices, cropSize);
+    });
+  }
   
-  //   const inputName = 'map/TensorArrayStack/TensorArrayGatherV3';
-  const inputName = 'map/while/eval_image/convert_image/Cast';
-  const feedDict = {};
-  feedDict[inputName] = img.toFloat();
-  feedDict['map/TensorArrayUnstack/Shape'] = tf.tensor1d([1], 'int32');
-  let scoresTensor = await model.executeAsync(feedDict, 'scores');
-  const scores = await scoresTensor.data();
-  tf.dispose([feedDict, scoresTensor]);
-  const results = Array.from(scores).map((score, i) => ({score, label: dict[i]}));
-  results.sort((a, b) => b.score - a.score);
-  return results;
-}
+  async function predict(img) {
+    // Preprocessing involves central crop and normalizing between [-1, 1].
+    img = tf.tidy(() => centerCrop(img).div(127.5).sub(1));
 
-async function run() {
-  await load();
-  const scores = await predict(img);
-  console.log(scores);
-}
-run();
+    const feedDict = { 'map/TensorArrayStack/TensorArrayGatherV3': img };
+    const scoresTensor = model.execute(feedDict, 'scores');
+    const scores = await scoresTensor.data();
+    tf.dispose([img, feedDict, scoresTensor]);
+    const results = Array.from(scores).map((score, i) => ({ score, label: dict[i] }));
+    results.sort((a, b) => b.score - a.score);
+    return results;
+  }
+
+  async function run() {
+    await load();
+    const scores = await predict(img);
+    console.log(scores);
+
+    console.log('Benchmarking...');
+    const N = 50;
+    const start = performance.now();
+    for (let i = 0; i < N; i++) {
+      await predict(img);
+    }
+    const elapsed = performance.now() - start;
+    console.log('Avg. inference time', elapsed / N);
+  }
+  run();
 </script>
